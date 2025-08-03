@@ -276,31 +276,131 @@ def intent_router(state: AgentState) -> AgentState:
         print(f"🔍 intent_router - 추출된 상품 번호: {product_number}")
         
         if product_number > 0 and product_number <= len(previous_recommendations):
-            print(f"🎯 {product_number}번 상품과 유사한 상품 검색으로 분류합니다.")
-            state['intent'] = "similar_product_finder"
+            # 상품 번호가 있는 경우, 사용자의 의도를 LLM으로 분석
+            product_intent_prompt = f"""
+            사용자 입력: "{user_input}"
+            상품 번호: {product_number}번
+            
+            사용자가 {product_number}번 상품에 대해 어떤 의도를 가지고 있는지 분석해주세요:
+            
+            **의도 분석:**
+            
+            1. **coordination** (코디네이션):
+               - 사용자가 {product_number}번 상품과 **조합**해서 입고 싶어하는 의도
+               - "같이 입을 수 있는", "잘 어울릴 만한", "코디하기 좋은"
+               - 예: "1번과 같이 입을 수 있는 상품", "2번과 코디하기 좋은 것"
+            
+            2. **similar_product_finder** (유사상품):
+               - 사용자가 {product_number}번 상품과 **비슷한 스타일**의 상품을 찾고 싶어하는 의도
+               - "유사한 상품", "비슷한 스타일", "같은 스타일"
+               - 예: "1번과 유사한 상품", "2번과 비슷한 스타일"
+            
+            3. **review_search** (리뷰 검색):
+               - 사용자가 {product_number}번 상품의 **리뷰나 평가**를 알고 싶어하는 의도
+               - "리뷰", "후기", "평가", "어떤가요", "좋은가요", "사용자 의견"
+               - 예: "1번 상품 리뷰는 어때?", "2번 상품 후기 알려줘"
+            
+            **핵심 구분:**
+            - "같이 입을 수 있는" → coordination (조합)
+            - "유사한 상품" → similar_product_finder (비슷한 스타일)
+            - "리뷰", "후기", "평가" → review_search (리뷰 검색)
+            
+            다음 형식으로 JSON을 반환하세요:
+            {{
+                "intent": "coordination/similar_product_finder/review_search",
+                "confidence": "high/medium/low",
+                "reason": "사용자의 진짜 의도 설명"
+            }}
+            """
+            
+            try:
+                response = llm_service.invoke(product_intent_prompt).strip()
+                
+                # JSON 파싱 시도
+                try:
+                    result = json.loads(response)
+                    intent = result.get('intent', 'similar_product_finder')
+                    confidence = result.get('confidence', 'low')
+                    reason = result.get('reason', '')
+                except json.JSONDecodeError:
+                    # JSON 파싱 실패 시 텍스트에서 의도 추출
+                    print(f"⚠️ JSON 파싱 실패, 텍스트에서 의도 추출 시도")
+                    if "coordination" in response.lower() or "코디" in response.lower() or "같이 입" in response.lower():
+                        intent = "coordination"
+                        reason = "코디네이션 키워드 감지"
+                    elif "review" in response.lower() or "리뷰" in response.lower() or "후기" in response.lower():
+                        intent = "review_search"
+                        reason = "리뷰 키워드 감지"
+                    else:
+                        intent = "similar_product_finder"
+                        reason = "기본값 (유사상품)"
+                    
+                    confidence = "medium"
+                
+                print(f"🎯 {product_number}번 상품 의도 분석: {intent}")
+                print(f"   신뢰도: {confidence}")
+                print(f"   이유: {reason}")
+                state['intent'] = intent
+                
+            except Exception as e:
+                print(f"⚠️ 상품 의도 분류 오류: {e}")
+                # 기본값으로 유사상품으로 분류
+                print(f"🎯 {product_number}번 상품과 유사한 상품 검색으로 분류합니다. (기본값)")
+                state['intent'] = "similar_product_finder"
+            
+            return state
+        
+        # 기존 추천 결과가 있고 피드백 키워드가 있으면 필터링으로 처리
+        feedback_keywords = ["4만원 미만", "5만원 이하", "10만원 미만", "비싸요", "싸요", "다른 색", "다른 브랜드", "저렴한", "비싼"]
+        if any(keyword in user_input for keyword in feedback_keywords):
+            print(f"🔍 기존 추천 결과에 대한 필터링으로 분류합니다.")
+            state['intent'] = "filter_existing"
             return state
     
-    # 프롬프팅 기반 의도 분류 (키워드 체크 대신)
+    # 의도 기반 분류 (LLM이 사용자의 진짜 의도를 이해)
     intent_prompt = f"""
     사용자 입력: "{user_input}"
     
-    다음 중 하나로 분류해주세요:
-    - "image_search": 유사한 상품, 비슷한 상품, 같은 스타일, 이미지 기반 검색
-    - "recommendation": 상품 추천 요청
-    - "feedback": 이전 추천에 대한 피드백 (비싸요, 싸요, 마음에 안 들어요 등)
-    - "chat": 일반 대화
+    사용자의 진짜 의도를 이해해서 다음 중 하나로 분류해주세요:
     
-    분류 규칙:
-    1. 이미지 검색: "유사한", "비슷한", "같은 스타일", "이런 느낌" 등
-    2. 추천 요청: "추천해줘", "보여줘", "찾아줘" 등
-    3. 피드백: "비싸요", "싸요", "마음에 안 들어요", "다른 거", "더 저렴한", "4만원 미만" 등
-    4. 일반 대화: 인사, 감사, 기타 잡담
+    **분류 기준:**
+    
+    1. **coordination** (코디네이션): 
+       - "같이 입을 수 있는", "잘 어울릴 만한", "코디하기 좋은"
+       - 사용자가 특정 상품과 **조합**해서 입고 싶어하는 의도
+       - 예: "1번과 같이 입을 수 있는 상품", "2번과 코디하기 좋은 것"
+    
+    2. **similar_product_finder** (유사상품):
+       - "유사한 상품", "비슷한 스타일", "같은 스타일"
+       - 사용자가 **비슷한 스타일**의 상품을 찾고 싶어하는 의도
+       - 예: "1번과 유사한 상품", "2번과 비슷한 스타일"
+    
+    3. **review_search** (리뷰 검색):
+       - "리뷰", "후기", "평가", "사용자 의견", "어떤가요", "좋은가요"
+       - "품질이 좋은", "리뷰가 좋은", "평점이 높은", "인기가 많은"
+       - 사용자가 상품의 **리뷰나 평가**를 알고 싶어하는 의도
+       - 예: "1번 상품 리뷰는 어때?", "내가 좋아요 누른 상품 중에서 가장 리뷰가 좋은 상품이 뭐야?"
+    
+    4. **recommendation** (일반 추천):
+       - 새로운 상품 추천 요청
+       - 예: "바지 추천해줘", "티셔츠 찾아줘"
+    
+    5. **feedback** (피드백):
+       - 이전 추천에 대한 반응
+       - 예: "비싸요", "싸요", "다른 거 보여줘"
+    
+    6. **chat** (일반 대화):
+       - 인사, 감사, 기타 잡담
+    
+    **핵심 구분:**
+    - "같이 입을 수 있는" → coordination (조합)
+    - "유사한 상품" → similar_product_finder (비슷한 스타일)
     
     다음 형식으로 JSON을 반환하세요:
     {{
-        "intent": "image_search/recommendation/feedback/chat",
+        "intent": "coordination/similar_product_finder/recommendation/feedback/chat",
         "confidence": "high/medium/low",
-        "reason": "분류 이유"
+        "reason": "사용자의 진짜 의도 설명"
     }}
     """
     
@@ -894,11 +994,11 @@ def text_filter_parser(state: AgentState) -> AgentState:
     - "비싼", "고급", "프리미엄", "10만원 이상" → "high"
     
     스타일 매핑:
-    - "캐주얼", "일상", "편한", "데일리" → "캐주얼"
-    - "스포티", "운동", "액티브", "피트니스" → "스포티"
-    - "오피스", "비즈니스", "정장", "깔끔한" → "오피스"
-    - "데이트", "로맨틱", "여성스러운" → "데이트"
-    - "스트릿", "힙합", "스케이트", "힙한" → "스트릿"
+    - "캐주얼", "캐주얼한", "일상", "편한", "데일리" → "캐주얼"
+    - "스포티", "스포티한", "운동", "액티브", "피트니스" → "스포티"
+    - "오피스", "오피스한", "비즈니스", "정장", "깔끔한" → "오피스"
+    - "데이트", "데이트한", "로맨틱", "여성스러운" → "데이트"
+    - "스트릿", "스트릿한", "힙합", "스케이트", "힙한" → "스트릿"
     
     색상 매핑:
     - "검정", "블랙", "검은색" → "검정"
@@ -1072,6 +1172,12 @@ def validate_and_normalize_slots(slots: dict) -> dict:
     
     return slots
 
+def generate_product_url(product_id, product_name):
+    """상품 URL 생성"""
+    # 실제 쇼핑몰 URL 패턴에 맞게 생성
+    # 예: https://www.musinsa.com/app/goods/1234567
+    return f"https://www.musinsa.com/app/goods/{product_id}"
+
 def recommendation_generator(state: AgentState) -> AgentState:
     """추천 알고리즘 수행 (텍스트 + 이미지 기반)"""
     slots = state.get('slots', {})
@@ -1079,6 +1185,10 @@ def recommendation_generator(state: AgentState) -> AgentState:
     
     # 이미지 결과가 있으면 우선 사용
     if image_results:
+        # 이미지 결과에 URL 추가
+        for product in image_results:
+            if product.get('product_id'):
+                product['product_url'] = generate_product_url(product['product_id'], product.get('product_name', ''))
         state['recommendations'] = image_results
         print(f"이미지 기반 추천 상품 {len(image_results)}개 생성")
         return state
@@ -1112,10 +1222,16 @@ def recommendation_generator(state: AgentState) -> AgentState:
                 query += " AND brand_kr ILIKE :brand"
                 params['brand'] = f"%{slots['brand']}%"
             
-            # 스타일 필터 (description에서 검색)
+            # 스타일 필터 (상품명 우선, 태그, 설명에서 검색)
             if slots.get('style'):
-                query += " AND COALESCE(description, '') ILIKE :style"
-                params['style'] = f"%{slots['style']}%"
+                query += """ AND (
+                    product_name ILIKE :style_name OR 
+                    :style_tag = ANY(tags) OR 
+                    COALESCE(description, '') ILIKE :style_desc
+                )"""
+                params['style_name'] = f"%{slots['style']}%"
+                params['style_tag'] = slots['style']
+                params['style_desc'] = f"%{slots['style']}%"
             
             # 색상 필터 (product_name과 description에서 검색)
             if slots.get('color'):
@@ -1145,18 +1261,27 @@ def recommendation_generator(state: AgentState) -> AgentState:
                     # 각 키워드에 대해 tags, 상품명, 설명에서 검색
                     keyword_conditions = []
                     for i, keyword in enumerate(valid_keywords):
-                        # tags, 상품명, 설명에서 키워드 검색 (NULL 처리 포함)
+                        # tags 배열에서 키워드 검색 (PostgreSQL 배열 연산자 사용)
                         keyword_conditions.append(f"""
-                            (tags::text ILIKE :keyword_{i} OR 
+                            (:keyword_{i} = ANY(tags) OR 
                              product_name ILIKE :keyword_{i} OR 
                              COALESCE(description, '') ILIKE :keyword_{i})
                         """)
-                        params[f'keyword_{i}'] = f"%{keyword}%"
+                        params[f'keyword_{i}'] = keyword
                     
                     if keyword_conditions:
                         query += f" AND ({' OR '.join(keyword_conditions)})"
             
-            query += f" ORDER BY RANDOM() LIMIT {MAX_RECOMMENDATIONS}"
+            # 정렬 로직: 상품명 우선순위, 그 다음 랜덤
+            order_conditions = []
+            if slots.get('style'):
+                order_conditions.append("product_name ILIKE :style_order DESC")
+                params['style_order'] = f"%{slots['style']}%"
+            
+            if order_conditions:
+                query += f" ORDER BY {', '.join(order_conditions)}, RANDOM() LIMIT {MAX_RECOMMENDATIONS}"
+            else:
+                query += f" ORDER BY RANDOM() LIMIT {MAX_RECOMMENDATIONS}"
             
             result = conn.execute(text(query), params)
             products = []
@@ -1170,7 +1295,8 @@ def recommendation_generator(state: AgentState) -> AgentState:
                     'description': row.description,
                     'image_url': row.image_url,
                     'brand_kr': row.brand_kr,
-                    'tags': row.tags if row.tags else []
+                    'tags': row.tags if row.tags else [],
+                    'product_url': generate_product_url(row.product_id, row.product_name)
                 }
                 products.append(product)
             
@@ -1253,6 +1379,31 @@ def conversation_agent(state: AgentState) -> AgentState:
     """일반 잡담, 감성 응대 처리"""
     user_input = state['messages'][-1].content if state['messages'] else ""
     
+    # 초기 인사말인 경우 특별한 응답 생성
+    if not user_input or user_input.strip() == "":
+        welcome_message = """안녕하세요! 👋 
+
+저는 AI 패션 추천 챗봇입니다. 당신만의 완벽한 스타일을 찾아드릴게요!
+
+🎯 **주요 기능**
+• **상품 추천**: "버뮤다 팬츠 4만원 미만으로 추천해줘"
+• **코디 추천**: "1번 상품과 코디하기 좋은 상품 추천해줘"
+• **유사 상품**: "이 상품과 비슷한 스타일 추천해줘"
+• **리뷰 분석**: "1번 상품 리뷰는 어때?"
+• **이미지 검색**: 사진을 업로드하면 유사한 상품을 찾아드려요
+
+💡 **사용 팁**
+- 구체적인 조건을 말씀해주시면 더 정확한 추천이 가능해요
+- 가격, 브랜드, 스타일 등을 자유롭게 조합해서 요청해보세요
+- 좋아하는 상품은 하트 버튼을 눌러서 저장할 수 있어요
+
+어떤 패션을 찾고 계신가요? 😊"""
+        
+        ai_message = AIMessage(content=welcome_message)
+        state['messages'].append(ai_message)
+        print("대화 응답 생성: 초기 인사말...")
+        return state
+    
     # 일반 대화 응답 생성
     chat_prompt = f"""
     다음 사용자 입력에 대한 친근하고 도움이 되는 응답을 생성해주세요:
@@ -1260,6 +1411,7 @@ def conversation_agent(state: AgentState) -> AgentState:
     사용자: "{user_input}"
     
     패션 추천 챗봇의 입장에서 자연스럽고 친근하게 응답해주세요.
+    이모지를 적절히 사용해서 친근한 느낌을 주세요.
     """
     
     try:
@@ -1280,6 +1432,14 @@ def output_node(state: AgentState) -> AgentState:
     recommendations = state.get('recommendations', [])
     feedback = state.get('feedback')
     intent = state.get('intent')
+    review_analysis = state.get('review_analysis')
+    
+    response_text = ""
+    
+    # 리뷰 요약 결과가 있으면 먼저 표시
+    review_summary = state.get('review_summary')
+    if review_summary and intent == "review_search":
+        response_text += f"{review_summary}\n\n"
     
     if recommendations:
         # 추천 결과를 previous_recommendations에 저장 (다음 요청을 위해)
@@ -1287,9 +1447,13 @@ def output_node(state: AgentState) -> AgentState:
         print(f"💾 output_node에서 previous_recommendations 저장: {len(recommendations)}개")
         
         if intent == "image_search":
-            response_text = f"이미지와 유사한 상품 {len(recommendations)}개를 찾았습니다:\n\n"
+            response_text += f"이미지와 유사한 상품 {len(recommendations)}개를 찾았습니다:\n\n"
+        elif intent == "review_search":
+            response_text += f"리뷰 기반 추천 상품 {len(recommendations)}개를 찾았습니다:\n\n"
+        elif intent == "filter_existing":
+            response_text += f"조건에 맞는 상품 {len(recommendations)}개를 찾았습니다:\n\n"
         else:
-            response_text = f"추천 상품 {len(recommendations)}개를 찾았습니다:\n\n"
+            response_text += f"추천 상품 {len(recommendations)}개를 찾았습니다:\n\n"
         
         # 사용자 기억에 따라 상품 표시 (설정 가능)
         display_count = min(DEFAULT_DISPLAY_COUNT, len(recommendations))
@@ -1299,19 +1463,717 @@ def output_node(state: AgentState) -> AgentState:
             response_text += f"   카테고리: {product['category']}\n"
             if product.get('similarity_score'):
                 response_text += f"   유사도: {product['similarity_score']:.2f}\n"
+            if product.get('recommendation_type') == 'review_based':
+                response_text += f"   추천 이유: 높은 평점의 리뷰 기반\n"
             response_text += "\n"
         
         if feedback == "positive":
             response_text += "좋아하신다니 기뻐요! 더 많은 추천이 필요하시면 언제든 말씀해주세요. 😊"
         elif feedback == "negative":
             response_text += "아쉽네요. 다른 조건으로 다시 추천해드릴게요!"
+        elif intent == "review_search":
+            response_text += "이런 상품들은 어떠세요? 다른 리뷰나 상품에 대해 궁금한 점이 있으시면 언제든 말씀해주세요!"
         else:
             response_text += "이런 상품들은 어떠세요? 더 구체적인 요청이 있으시면 말씀해주세요!"
     else:
-        response_text = "죄송합니다. 조건에 맞는 상품을 찾지 못했습니다. 다른 조건으로 다시 시도해보세요."
+        if intent == "review_search":
+            response_text = "죄송합니다. 관련된 리뷰를 찾지 못했습니다. 다른 키워드로 다시 시도해보세요."
+        else:
+            response_text = "죄송합니다. 조건에 맞는 상품을 찾지 못했습니다. 다른 조건으로 다시 시도해보세요."
     
     ai_message = AIMessage(content=response_text)
     state['messages'].append(ai_message)
     print(f"최종 응답 생성: {response_text[:50]}...")
     
     return state 
+
+def review_search_node(state: AgentState) -> AgentState:
+    """리뷰 검색 및 분석"""
+    user_input = state.get('messages', [])[-1].content if state.get('messages') else ""
+    
+    if not user_input:
+        return state
+    
+    try:
+        # 상품 번호 추출
+        product_number = extract_product_number(user_input)
+        session_id = state.get('session_id', 'default_session')
+        
+        # 1. 특정 상품 번호가 있는 경우
+        if product_number > 0:
+            previous_recommendations = state.get('previous_recommendations', [])
+            if product_number <= len(previous_recommendations):
+                target_product = previous_recommendations[product_number - 1]
+                product_id = target_product.get('product_id')
+                
+                # 해당 상품의 리뷰 검색
+                reviews = search_reviews_by_product_id(product_id)
+                state['review_results'] = reviews
+                print(f"📝 {product_number}번 상품 리뷰 검색 결과: {len(reviews)}개")
+                
+                # 리뷰 요약 생성
+                if reviews:
+                    summary = generate_review_summary(reviews, target_product['product_name'])
+                    state['review_summary'] = summary
+                    print(f"📊 {product_number}번 상품 리뷰 요약 완료")
+                else:
+                    state['review_summary'] = f"{product_number}번 상품 '{target_product['product_name']}'의 리뷰를 찾을 수 없습니다."
+                
+                return state
+        
+        # 2. 좋아요 누른 상품들의 리뷰 검색
+        if "좋아요" in user_input or "좋아한" in user_input:
+            liked_products = get_liked_products(session_id)
+            if liked_products:
+                all_reviews = []
+                for product in liked_products:
+                    product_reviews = search_reviews_by_product_id(product['product_id'])
+                    all_reviews.extend(product_reviews)
+                
+                state['review_results'] = all_reviews
+                print(f"📝 좋아요 상품 리뷰 검색 결과: {len(all_reviews)}개")
+                
+                # 리뷰 요약 생성
+                if all_reviews:
+                    summary = generate_liked_products_review_summary(all_reviews, liked_products)
+                    state['review_summary'] = summary
+                    print("📊 좋아요 상품 리뷰 요약 완료")
+                else:
+                    state['review_summary'] = "좋아요 누른 상품들의 리뷰를 찾을 수 없습니다."
+                
+                return state
+        
+        # 3. 일반적인 리뷰 검색 (품질, 만족도 등)
+        reviews = search_reviews_by_keyword(user_input)
+        state['review_results'] = reviews
+        print(f"📝 일반 리뷰 검색 결과: {len(reviews)}개")
+        
+        # 리뷰 요약 생성
+        if reviews:
+            summary = generate_general_review_summary(reviews, user_input)
+            state['review_summary'] = summary
+            print("📊 일반 리뷰 요약 완료")
+        else:
+            state['review_summary'] = f"'{user_input}'와 관련된 리뷰를 찾을 수 없습니다."
+            
+    except Exception as e:
+        print(f"⚠️ 리뷰 검색 오류: {e}")
+        state['review_results'] = []
+        state['review_summary'] = "리뷰 검색 중 오류가 발생했습니다."
+    
+    return state
+
+# ==================== 리뷰 검색 헬퍼 함수들 ====================
+
+def search_reviews_by_product_id(product_id: int) -> list:
+    """특정 상품 ID로 리뷰 검색"""
+    try:
+        from sqlalchemy import text
+        from backend.core.database import engine
+        
+        # PostgreSQL에서 직접 리뷰 조회
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT id, product_id, rating, content, user_name, review_date
+                FROM product_reviews 
+                WHERE product_id = :product_id 
+                AND content IS NOT NULL AND content != ''
+                ORDER BY rating DESC
+                LIMIT 10
+            """), {'product_id': product_id})
+            
+            reviews = []
+            for row in result:
+                reviews.append({
+                    'content': row.content,
+                    'rating': float(row.rating) if row.rating else 0.0,
+                    'product_id': row.product_id,
+                    'user_name': row.user_name or '',
+                    'review_date': row.review_date
+                })
+            
+            return reviews
+    except Exception as e:
+        print(f"⚠️ 상품 ID {product_id} 리뷰 검색 오류: {e}")
+        return []
+
+def search_reviews_by_keyword(keyword: str) -> list:
+    """키워드로 리뷰 검색"""
+    try:
+        import chromadb
+        from langchain_openai import OpenAIEmbeddings
+        from config import CHROMA_DB_PATH
+        
+        client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+        collection = client.get_collection("reviews")
+        embeddings = OpenAIEmbeddings()
+        
+        # 키워드를 임베딩으로 변환
+        query_embedding = embeddings.embed_query(keyword)
+        
+        # 유사한 리뷰 검색
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=10,
+            include=['documents', 'metadatas', 'distances']
+        )
+        
+        reviews = []
+        if results['documents'] and results['documents'][0]:
+            for i, (doc, metadata, distance) in enumerate(zip(
+                results['documents'][0], 
+                results['metadatas'][0], 
+                results['distances'][0]
+            )):
+                reviews.append({
+                    'content': doc,
+                    'rating': metadata.get('rating', 0),
+                    'product_id': metadata.get('product_id'),
+                    'user_name': metadata.get('user_name', ''),
+                    'similarity': 1 - distance
+                })
+        
+        return reviews
+    except Exception as e:
+        print(f"⚠️ 키워드 '{keyword}' 리뷰 검색 오류: {e}")
+        return []
+
+def generate_review_summary(reviews: list, product_name: str) -> str:
+    """특정 상품의 리뷰 요약 생성"""
+    if not reviews:
+        return f"'{product_name}'의 리뷰를 찾을 수 없습니다."
+    
+    # 상위 5개 리뷰만 사용
+    top_reviews = sorted(reviews, key=lambda x: x['rating'], reverse=True)[:5]
+    
+    review_texts = []
+    for review in top_reviews:
+        review_texts.append(f"평점 {review['rating']}점: {review['content']}")
+    
+    summary_prompt = f"""
+    다음은 '{product_name}' 상품의 리뷰들입니다:
+    
+    {chr(10).join(review_texts)}
+    
+    이 리뷰들을 간단한 텍스트로만 요약해주세요. 마크다운 형식이나 불필요한 구조는 제외하고, 핵심 내용만 간결하게 작성해주세요. 사용자에게 설명하는 식으로 존댓말을 사용해주세요.
+    """
+    
+    try:
+        summary = llm_service.invoke(summary_prompt)
+        return summary
+    except Exception as e:
+        print(f"⚠️ 리뷰 요약 생성 오류: {e}")
+        return f"'{product_name}'의 리뷰 요약을 생성할 수 없습니다."
+
+def generate_liked_products_review_summary(reviews: list, liked_products: list) -> str:
+    """좋아요 누른 상품들의 리뷰 요약 생성"""
+    if not reviews:
+        return "좋아요 누른 상품들의 리뷰를 찾을 수 없습니다."
+    
+    # 상위 10개 리뷰만 사용
+    top_reviews = sorted(reviews, key=lambda x: x['rating'], reverse=True)[:10]
+    
+    review_texts = []
+    for review in top_reviews:
+        product_name = next((p['product_name'] for p in liked_products if p['product_id'] == review['product_id']), '알 수 없는 상품')
+        review_texts.append(f"[{product_name}] 평점 {review['rating']}점: {review['content']}")
+    
+    summary_prompt = f"""
+    다음은 사용자가 좋아요 누른 상품들의 리뷰들입니다:
+    
+    {chr(10).join(review_texts)}
+    
+    이 리뷰들을 간단한 텍스트로만 요약해주세요. 마크다운 형식이나 불필요한 구조는 제외하고, 핵심 내용만 간결하게 작성해주세요. 사용자에게 설명하는 식으로 존댓말을 사용해주세요.
+    """
+    
+    try:
+        summary = llm_service.invoke(summary_prompt)
+        return summary
+    except Exception as e:
+        print(f"⚠️ 좋아요 상품 리뷰 요약 생성 오류: {e}")
+        return "좋아요 상품들의 리뷰 요약을 생성할 수 없습니다."
+
+def generate_general_review_summary(reviews: list, keyword: str) -> str:
+    """일반적인 리뷰 요약 생성"""
+    if not reviews:
+        return f"'{keyword}'와 관련된 리뷰를 찾을 수 없습니다."
+    
+    # 상위 8개 리뷰만 사용
+    top_reviews = sorted(reviews, key=lambda x: x['rating'], reverse=True)[:8]
+    
+    review_texts = []
+    for review in top_reviews:
+        review_texts.append(f"평점 {review['rating']}점: {review['content']}")
+    
+    summary_prompt = f"""
+    다음은 '{keyword}'와 관련된 리뷰들입니다:
+    
+    {chr(10).join(review_texts)}
+    
+    이 리뷰들을 간단한 텍스트로만 요약해주세요. 마크다운 형식이나 불필요한 구조는 제외하고, 핵심 내용만 간결하게 작성해주세요. 사용자에게 설명하는 식으로 존댓말을 사용해주세요.
+    """
+    
+    try:
+        summary = llm_service.invoke(summary_prompt)
+        return summary
+    except Exception as e:
+        print(f"⚠️ 일반 리뷰 요약 생성 오류: {e}")
+        return f"'{keyword}' 관련 리뷰 요약을 생성할 수 없습니다."
+
+def review_based_recommendation(state: AgentState) -> AgentState:
+    """리뷰 기반 상품 추천"""
+    review_results = state.get('review_results', [])
+    
+    if not review_results:
+        # 리뷰 결과가 없으면 추천 결과도 초기화
+        state['recommendations'] = []
+        return state
+    
+    try:
+        # 리뷰에서 높은 평점의 상품들 추출
+        high_rated_products = []
+        for review in review_results:
+            if review.get('rating', 0) >= 4.0:  # 4점 이상
+                high_rated_products.append(review['product_id'])
+        
+        if not high_rated_products:
+            return state
+        
+        # 중복 제거
+        unique_product_ids = list(set(high_rated_products))
+        
+        # 해당 상품들의 정보 조회
+        with engine.connect() as conn:
+            placeholders = ','.join([':id' + str(i) for i in range(len(unique_product_ids))])
+            query = f"""
+                SELECT product_id, product_name, category, price, description, 
+                       image_url, brand_kr, tags
+                FROM products
+                WHERE product_id IN ({placeholders})
+                ORDER BY RANDOM()
+                LIMIT {MAX_RECOMMENDATIONS}
+            """
+            
+            params = {f'id{i}': pid for i, pid in enumerate(unique_product_ids)}
+            result = conn.execute(text(query), params)
+            
+            products = []
+            for row in result:
+                product = {
+                    'product_id': row.product_id,
+                    'product_name': row.product_name,
+                    'category': row.category,
+                    'price': float(row.price) if row.price else 0,
+                    'description': row.description,
+                    'image_url': row.image_url,
+                    'brand_kr': row.brand_kr,
+                    'tags': row.tags if row.tags else [],
+                    'recommendation_type': 'review_based',
+                    'product_url': generate_product_url(row.product_id, row.product_name)
+                }
+                products.append(product)
+            
+            state['recommendations'] = products
+            print(f"📝 리뷰 기반 추천 상품 {len(products)}개 생성")
+            
+    except Exception as e:
+        print(f"⚠️ 리뷰 기반 추천 오류: {e}")
+    
+    return state
+
+def review_analyzer(state: AgentState) -> AgentState:
+    """리뷰 분석 및 요약"""
+    review_results = state.get('review_results', [])
+    
+    if not review_results:
+        return state
+    
+    try:
+        # 리뷰 분석 프롬프트 생성
+        review_texts = []
+        for review in review_results[:3]:  # 상위 3개 리뷰만 분석
+            review_texts.append(f"평점 {review['rating']}점: {review['content']}")
+        
+        analysis_prompt = f"""
+        다음 리뷰들을 분석해서 패션 상품에 대한 인사이트를 제공해주세요:
+        
+        {chr(10).join(review_texts)}
+        
+        다음 형식으로 분석해주세요:
+        1. 전반적인 만족도
+        2. 주요 장점
+        3. 개선점
+        4. 추천 대상
+        """
+        
+        analysis_response = llm_service.invoke(analysis_prompt)
+        state['review_analysis'] = analysis_response
+        print("📊 리뷰 분석 완료")
+        
+    except Exception as e:
+        print(f"⚠️ 리뷰 분석 오류: {e}")
+    
+    return state
+
+def filter_existing_recommendations(state: AgentState) -> AgentState:
+    """기존 추천 결과에 대한 필터링 처리"""
+    user_input = state.get('messages', [])[-1].content if state.get('messages') else ""
+    previous_recommendations = state.get('previous_recommendations', [])
+    
+    if not previous_recommendations:
+        return state
+    
+    # 피드백 분석을 통한 필터링 조건 추출
+    feedback_prompt = f"""
+    다음 사용자 피드백을 분석하여 기존 추천 결과에 적용할 필터링 조건을 추출해주세요:
+    
+    사용자 입력: "{user_input}"
+    기존 추천 상품 수: {len(previous_recommendations)}개
+    
+    다음 형식으로 JSON을 반환하세요:
+    {{
+        "filter_type": "price/style/color/brand/all",
+        "price_range": "low/medium/high",
+        "style": "캐주얼/스포티/오피스/데이트/스트릿",
+        "color": "색상명",
+        "brand": "브랜드명",
+        "max_price": 숫자값,
+        "min_price": 숫자값
+    }}
+    
+    필터링 규칙:
+    - "4만원 미만", "5만원 이하" → price_range="low", max_price=50000
+    - "10만원 미만" → max_price=100000
+    - "비싸요" → price_range를 한 단계 낮춤 (high→medium, medium→low)
+    - "싸요" → price_range를 한 단계 높임 (low→medium, medium→high)
+    - "다른 색" → color 필터링
+    - "다른 브랜드" → brand 필터링
+    
+    해당하는 정보가 없으면 null로 설정하세요.
+    """
+    
+    try:
+        response = llm_service.invoke(feedback_prompt)
+        filter_conditions = json.loads(response)
+        
+        # 기존 추천 결과에 필터링 적용
+        filtered_products = []
+        
+        for product in previous_recommendations:
+            include_product = True
+            
+            # 가격 필터링
+            if filter_conditions.get('max_price'):
+                if product.get('price', 0) > filter_conditions['max_price']:
+                    include_product = False
+            
+            if filter_conditions.get('min_price'):
+                if product.get('price', 0) < filter_conditions['min_price']:
+                    include_product = False
+            
+            if filter_conditions.get('price_range'):
+                price = product.get('price', 0)
+                if filter_conditions['price_range'] == 'low' and price > DEFAULT_PRICE_RANGES['low']:
+                    include_product = False
+                elif filter_conditions['price_range'] == 'medium' and (price <= DEFAULT_PRICE_RANGES['low'] or price > DEFAULT_PRICE_RANGES['medium']):
+                    include_product = False
+                elif filter_conditions['price_range'] == 'high' and price <= DEFAULT_PRICE_RANGES['medium']:
+                    include_product = False
+            
+            # 색상 필터링
+            if filter_conditions.get('color') and include_product:
+                color = filter_conditions['color'].lower()
+                product_name = product.get('product_name', '').lower()
+                product_desc = product.get('description', '').lower()
+                if color not in product_name and color not in product_desc:
+                    include_product = False
+            
+            # 브랜드 필터링
+            if filter_conditions.get('brand') and include_product:
+                brand = filter_conditions['brand'].lower()
+                product_brand = product.get('brand_kr', '').lower()
+                if brand not in product_brand:
+                    include_product = False
+            
+            if include_product:
+                filtered_products.append(product)
+        
+        if filtered_products:
+            state['recommendations'] = filtered_products
+            print(f"🔍 기존 추천 결과 필터링: {len(previous_recommendations)}개 → {len(filtered_products)}개")
+        else:
+            # 필터링 결과가 없으면 기존 조건으로 재추천
+            print("🔍 필터링 결과가 없어서 재추천을 수행합니다.")
+            state['recommendations'] = []
+            
+    except Exception as e:
+        print(f"⚠️ 기존 추천 결과 필터링 오류: {e}")
+        state['recommendations'] = previous_recommendations
+    
+    return state
+
+def get_coordination_products_by_id(product_id: int, limit: int = 10) -> list:
+    """특정 상품과 코디하기 좋은 상품들을 찾는 함수 (카테고리 필터 제외)"""
+    try:
+        with engine.connect() as conn:
+            # 해당 상품의 정보 가져오기
+            product_query = text("""
+                SELECT product_id, product_name, category, image_path, image_url, price, brand_kr
+                FROM products 
+                WHERE product_id = :product_id
+            """)
+            product_result = conn.execute(product_query, {"product_id": product_id}).fetchone()
+            
+            if not product_result:
+                print(f"⚠️ 상품 ID {product_id}를 찾을 수 없습니다.")
+                return []
+            
+            # Row 객체를 딕셔너리로 변환
+            product = {
+                'product_id': product_result.product_id,
+                'product_name': product_result.product_name,
+                'category': product_result.category,
+                'image_path': product_result.image_path,
+                'image_url': product_result.image_url,
+                'price': product_result.price,
+                'brand_kr': product_result.brand_kr
+            }
+            print(f"🎯 코디 대상 상품: {product['product_name']} (카테고리: {product['category']})")
+            
+            # 해당 상품의 이미지 임베딩 가져오기
+            product_embedding = get_image_embedding(product['image_path'], product['image_url'])
+            
+            if product_embedding is None:
+                print(f"⚠️ 상품 ID {product_id}의 이미지 임베딩을 생성할 수 없습니다.")
+                return []
+            
+            # 코디 추천을 위한 상품 검색 (카테고리 필터 제외)
+            # 상품명, 브랜드, 가격대를 고려하여 코디하기 좋은 상품들 찾기
+            coordination_query = text("""
+                SELECT product_id, product_name, category, image_path, image_url, price, brand_kr
+                FROM products 
+                WHERE product_id != :product_id
+                AND image_path IS NOT NULL AND image_path != ''
+                AND category != :category  -- 다른 카테고리에서 코디 상품 찾기
+                ORDER BY RANDOM()  -- 랜덤하게 선택하여 다양성 확보
+                LIMIT :limit
+            """)
+            
+            coordination_products = conn.execute(coordination_query, {
+                "product_id": product_id,
+                "category": product['category'],
+                "limit": limit * 3  # 더 많은 상품을 가져와서 필터링
+            }).fetchall()
+            
+            if not coordination_products:
+                print(f"⚠️ 코디 추천을 위한 상품을 찾을 수 없습니다.")
+                return []
+            
+            # 코디 적합성 계산
+            products_with_coordination_score = []
+            for coord_product in coordination_products:
+                # Row 객체를 딕셔너리로 변환
+                coord_product_dict = {
+                    'product_id': coord_product.product_id,
+                    'product_name': coord_product.product_name,
+                    'category': coord_product.category,
+                    'image_path': coord_product.image_path,
+                    'image_url': coord_product.image_url,
+                    'price': coord_product.price,
+                    'brand_kr': coord_product.brand_kr
+                }
+                
+                coord_embedding = get_image_embedding(
+                    coord_product_dict['image_path'], 
+                    coord_product_dict['image_url']
+                )
+                
+                if coord_embedding is not None:
+                    # 코디 적합성 점수 계산
+                    coordination_score = calculate_coordination_score(
+                        product, 
+                        coord_product_dict, 
+                        product_embedding, 
+                        coord_embedding
+                    )
+                    
+                    coord_product_dict['coordination_score'] = float(coordination_score)
+                    coord_product_dict['image_similarity'] = float(np.dot(product_embedding, coord_embedding))
+                    products_with_coordination_score.append(coord_product_dict)
+            
+            # 코디 적합성 순으로 정렬
+            products_with_coordination_score.sort(key=lambda x: x['coordination_score'], reverse=True)
+            
+            # 상위 결과만 반환
+            result = products_with_coordination_score[:limit]
+            
+            print(f"✅ 코디 추천 상품 {len(result)}개 찾음")
+            for i, product in enumerate(result[:3], 1):
+                print(f"   {i}. {product['product_name']} (코디 점수: {product['coordination_score']:.3f})")
+            
+            return result
+            
+    except Exception as e:
+        print(f"⚠️ 코디 상품 검색 오류: {e}")
+        return []
+
+def calculate_coordination_score(base_product: dict, coord_product: dict, 
+                               base_embedding: np.ndarray, coord_embedding: np.ndarray) -> float:
+    """코디 적합성 점수 계산"""
+    try:
+        # 1. 이미지 유사도 (스타일 매칭)
+        image_similarity = float(np.dot(base_embedding, coord_embedding))
+        
+        # 2. 가격대 적합성 (비슷한 가격대 선호)
+        price_compatibility = 1.0
+        if base_product.get('price') and coord_product.get('price'):
+            base_price = float(base_product['price'])
+            coord_price = float(coord_product['price'])
+            price_ratio = min(base_price, coord_price) / max(base_price, coord_price)
+            price_compatibility = price_ratio * 0.5 + 0.5  # 0.5~1.0 범위
+        
+        # 3. 브랜드 호환성 (같은 브랜드면 가산점)
+        brand_compatibility = 1.0
+        if (base_product.get('brand_kr') and coord_product.get('brand_kr') and 
+            base_product['brand_kr'] == coord_product['brand_kr']):
+            brand_compatibility = 1.2  # 같은 브랜드면 20% 가산점
+        
+        # 4. 카테고리 조합 적합성
+        category_compatibility = get_category_coordination_score(
+            base_product.get('category', ''), 
+            coord_product.get('category', '')
+        )
+        
+        # 최종 코디 점수 계산
+        coordination_score = (
+            image_similarity * 0.4 +           # 이미지 유사도 40%
+            price_compatibility * 0.2 +        # 가격 적합성 20%
+            brand_compatibility * 0.2 +        # 브랜드 호환성 20%
+            category_compatibility * 0.2       # 카테고리 조합 20%
+        )
+        
+        return coordination_score
+        
+    except Exception as e:
+        print(f"⚠️ 코디 점수 계산 오류: {e}")
+        return 0.0
+
+def get_category_coordination_score(category1: str, category2: str) -> float:
+    """카테고리 조합의 코디 적합성 점수"""
+    # 코디하기 좋은 카테고리 조합 정의
+    good_combinations = {
+        # 상의 + 하의 조합
+        ('상의', '하의'): 1.0,
+        ('하의', '상의'): 1.0,
+        ('티셔츠', '팬츠'): 1.0,
+        ('팬츠', '티셔츠'): 1.0,
+        ('셔츠', '팬츠'): 1.0,
+        ('팬츠', '셔츠'): 1.0,
+        ('니트', '팬츠'): 1.0,
+        ('팬츠', '니트'): 1.0,
+        
+        # 아우터 + 상의 조합
+        ('아우터', '상의'): 0.9,
+        ('상의', '아우터'): 0.9,
+        ('자켓', '티셔츠'): 0.9,
+        ('티셔츠', '자켓'): 0.9,
+        ('코트', '니트'): 0.9,
+        ('니트', '코트'): 0.9,
+        
+        # 원피스 + 아우터 조합
+        ('원피스', '아우터'): 0.8,
+        ('아우터', '원피스'): 0.8,
+        ('원피스', '자켓'): 0.8,
+        ('자켓', '원피스'): 0.8,
+        
+        # 액세서리 조합
+        ('상의', '액세서리'): 0.7,
+        ('하의', '액세서리'): 0.7,
+        ('아우터', '액세서리'): 0.7,
+        ('액세서리', '상의'): 0.7,
+        ('액세서리', '하의'): 0.7,
+        ('액세서리', '아우터'): 0.7,
+    }
+    
+    # 정확한 매칭 확인
+    if (category1, category2) in good_combinations:
+        return good_combinations[(category1, category2)]
+    
+    # 부분 매칭 확인 (카테고리명에 포함된 키워드로 매칭)
+    for (cat1, cat2), score in good_combinations.items():
+        if (cat1 in category1 and cat2 in category2) or (cat2 in category1 and cat1 in category2):
+            return score
+    
+    # 기본값 (같은 카테고리는 낮은 점수)
+    if category1 == category2:
+        return 0.3  # 같은 카테고리는 코디에 부적합
+    
+    return 0.5  # 기본 호환성 점수
+
+def coordination_finder(state: AgentState) -> AgentState:
+    """특정 상품과 코디하기 좋은 상품을 찾는 노드"""
+    user_input = state['messages'][-1].content if state['messages'] else ""
+    
+    # 상품 번호 추출
+    product_number = extract_product_number(user_input)
+    
+    if product_number <= 0:
+        # 상품 번호를 찾을 수 없으면 일반 대화로 처리
+        return conversation_agent(state)
+    
+    # 이전 추천 결과에서 해당 번호의 상품 찾기
+    previous_recommendations = state.get('previous_recommendations', [])
+    print(f"🔍 이전 추천 결과 개수: {len(previous_recommendations)}")
+    print(f"🔍 요청한 상품 번호: {product_number}")
+    
+    if not previous_recommendations or product_number > len(previous_recommendations):
+        response_text = f"죄송합니다. {product_number}번 상품을 찾을 수 없습니다. 먼저 상품을 추천받아주세요."
+        ai_message = AIMessage(content=response_text)
+        state['messages'].append(ai_message)
+        return state
+    
+    target_product = previous_recommendations[product_number - 1]
+    product_id = target_product.get('product_id')
+    
+    print(f"🎯 코디 대상 상품 ID: {product_id}")
+    print(f"🎯 코디 대상 상품명: {target_product.get('product_name', 'N/A')}")
+    
+    if not product_id:
+        response_text = f"죄송합니다. {product_number}번 상품의 정보를 찾을 수 없습니다."
+        ai_message = AIMessage(content=response_text)
+        state['messages'].append(ai_message)
+        return state
+    
+    print(f"🎯 {product_number}번 상품과 코디하기 좋은 상품을 찾습니다...")
+    print(f"   대상 상품: {target_product['product_name']}")
+    
+    # 코디 상품 검색
+    coordination_products = get_coordination_products_by_id(product_id, MAX_RECOMMENDATIONS)
+    
+    if coordination_products:
+        # 결과를 state에 저장
+        state['recommendations'] = coordination_products
+        state['previous_recommendations'] = coordination_products  # 다음 요청을 위해 저장
+        
+        response_text = f"{product_number}번 상품 '{target_product['product_name']}'과 코디하기 좋은 상품 {len(coordination_products)}개를 찾았습니다:\n\n"
+        
+        for i, product in enumerate(coordination_products, 1):
+            response_text += f"{i}. {product['product_name']}\n"
+            if product.get('price'):
+                response_text += f"   가격: {product['price']:,}원\n"
+            if product.get('brand_kr'):
+                response_text += f"   브랜드: {product['brand_kr']}\n"
+            if product.get('category'):
+                response_text += f"   카테고리: {product['category']}\n"
+            response_text += "\n"
+        
+        ai_message = AIMessage(content=response_text)
+        state['messages'].append(ai_message)
+        print(f"✅ {product_number}번 상품 코디 추천 {len(coordination_products)}개 찾음")
+        print(f"💾 previous_recommendations 저장됨: {len(coordination_products)}개")
+    else:
+        response_text = f"죄송합니다. {product_number}번 상품과 코디하기 좋은 상품을 찾을 수 없습니다."
+        ai_message = AIMessage(content=response_text)
+        state['messages'].append(ai_message)
+    
+    return state

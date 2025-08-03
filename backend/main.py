@@ -14,10 +14,10 @@ from sqlalchemy import text
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from core.database import engine
+from backend.core.database import engine
 
 from config import HOST, PORT, CORS_ORIGINS
-from nodes import intent_router, conversation_agent, output_node, text_filter_parser, recommendation_generator, feedback_analyzer, image_processor, image_similarity_search, similar_product_finder
+from nodes import intent_router, conversation_agent, output_node, text_filter_parser, recommendation_generator, feedback_analyzer, image_processor, image_similarity_search, similar_product_finder, coordination_finder, review_search_node, review_based_recommendation, review_analyzer, filter_existing_recommendations
 
 # ==================== 세션 테이블 생성 ====================
 
@@ -25,10 +25,11 @@ def create_sessions_table():
     """세션 테이블 생성"""
     try:
         with engine.connect() as conn:
+            # SQLite용 테이블 생성 (JSONB 대신 TEXT 사용)
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS sessions (
-                    session_id VARCHAR(255) PRIMARY KEY,
-                    state_data JSONB,
+                    session_id TEXT PRIMARY KEY,
+                    state_data TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -37,6 +38,27 @@ def create_sessions_table():
             print("✅ 세션 테이블 생성 완료")
     except Exception as e:
         print(f"❌ 세션 테이블 생성 오류: {e}")
+
+def create_likes_table():
+    """좋아요 테이블 생성"""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS likes (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    product_id INTEGER NOT NULL,
+                    product_data TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(session_id, product_id)
+                )
+            """))
+            conn.commit()
+            print("✅ 좋아요 테이블 생성 완료")
+    except Exception as e:
+        print(f"❌ 좋아요 테이블 생성 오류: {e}")
+        import traceback
+        traceback.print_exc()
 
 # ==================== 세션 관리 함수 ====================
 
@@ -119,6 +141,88 @@ def delete_session_from_db(session_id: str):
     except Exception as e:
         print(f"❌ 세션 삭제 오류: {e}")
 
+# ==================== 좋아요 관리 함수 ====================
+
+def add_like(session_id: str, product_id: int, product_data: dict):
+    """좋아요 추가"""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                INSERT INTO likes (session_id, product_id, product_data, created_at)
+                VALUES (:session_id, :product_id, :product_data, CURRENT_TIMESTAMP)
+                ON CONFLICT (session_id, product_id) 
+                DO UPDATE SET 
+                    product_data = EXCLUDED.product_data,
+                    created_at = CURRENT_TIMESTAMP
+            """), {
+                'session_id': session_id,
+                'product_id': product_id,
+                'product_data': json.dumps(product_data, ensure_ascii=False)
+            })
+            conn.commit()
+            print(f"✅ 좋아요 추가: 세션 {session_id}, 상품 {product_id}")
+            print(f"📝 저장된 상품 데이터: {product_data}")
+    except Exception as e:
+        print(f"❌ 좋아요 추가 오류: {e}")
+        raise e
+
+def remove_like(session_id: str, product_id: int):
+    """좋아요 제거"""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                DELETE FROM likes WHERE session_id = :session_id AND product_id = :product_id
+            """), {
+                'session_id': session_id,
+                'product_id': product_id
+            })
+            conn.commit()
+            print(f"✅ 좋아요 제거: 세션 {session_id}, 상품 {product_id}")
+    except Exception as e:
+        print(f"❌ 좋아요 제거 오류: {e}")
+
+def get_liked_products(session_id: str) -> List[Dict]:
+    """좋아요한 상품 목록 조회"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT product_data FROM likes 
+                WHERE session_id = :session_id 
+                ORDER BY created_at DESC
+            """), {'session_id': session_id})
+            
+            liked_products = []
+            for row in result.fetchall():
+                if row.product_data:
+                    try:
+                        product_data = json.loads(row.product_data)
+                        liked_products.append(product_data)
+                        print(f"📖 로드된 상품: {product_data.get('product_name', 'Unknown')}")
+                    except json.JSONDecodeError as e:
+                        print(f"❌ JSON 파싱 오류: {e}, 데이터: {row.product_data}")
+            
+            print(f"✅ 좋아요 상품 조회: 세션 {session_id}, {len(liked_products)}개")
+            return liked_products
+    except Exception as e:
+        print(f"❌ 좋아요 상품 조회 오류: {e}")
+        return []
+
+def is_liked(session_id: str, product_id: int) -> bool:
+    """상품이 좋아요되었는지 확인"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT 1 FROM likes 
+                WHERE session_id = :session_id AND product_id = :product_id
+            """), {
+                'session_id': session_id,
+                'product_id': product_id
+            })
+            return result.fetchone() is not None
+    except Exception as e:
+        print(f"❌ 좋아요 확인 오류: {e}")
+        return False
+
 # ==================== FastAPI 앱 생성 ====================
 
 app = FastAPI(title="AI 패션 추천 시스템", version="1.0.0")
@@ -149,10 +253,19 @@ class ImageUploadResponse(BaseModel):
     image_url: str
     session_id: str
 
-# ==================== 간단한 워크플로우 ====================
+class LikeRequest(BaseModel):
+    session_id: str
+    product_id: int
+    action: str  # "like" or "unlike"
+
+class LikeResponse(BaseModel):
+    message: str
+    liked_products: List[Dict] = []
+
+# ==================== 워크플로우 ====================
 
 def create_simple_graph():
-    """간단한 워크플로우 생성"""
+    """워크플로우 생성"""
     workflow = StateGraph(dict)  # 간단한 dict 타입 사용
     
     # 노드 추가
@@ -164,6 +277,11 @@ def create_simple_graph():
     workflow.add_node("recommendation_generator", recommendation_generator)
     workflow.add_node("conversation_agent", conversation_agent)
     workflow.add_node("similar_product_finder", similar_product_finder)
+    workflow.add_node("coordination_finder", coordination_finder)
+    workflow.add_node("review_search_node", review_search_node)
+    workflow.add_node("review_based_recommendation", review_based_recommendation)
+    workflow.add_node("review_analyzer", review_analyzer)
+    workflow.add_node("filter_existing_recommendations", filter_existing_recommendations)
     workflow.add_node("output_node", output_node)
     
     # 시작점 설정
@@ -177,7 +295,10 @@ def create_simple_graph():
             "recommendation": "text_filter_parser",
             "image_search": "image_processor",
             "similar_product_finder": "similar_product_finder",
+            "coordination": "coordination_finder",
             "feedback": "feedback_analyzer",
+            "filter_existing": "filter_existing_recommendations",
+            "review_search": "review_search_node",
             "chat": "conversation_agent"
         }
     )
@@ -193,6 +314,17 @@ def create_simple_graph():
     
     # 특정 상품 유사 상품 찾기 플로우
     workflow.add_edge("similar_product_finder", END)
+    
+    # 코디 추천 플로우
+    workflow.add_edge("coordination_finder", END)
+    
+    # 리뷰 검색 플로우
+    workflow.add_edge("review_search_node", "review_analyzer")
+    workflow.add_edge("review_analyzer", "review_based_recommendation")
+    workflow.add_edge("review_based_recommendation", "output_node")
+    
+    # 기존 추천 결과 필터링 플로우
+    workflow.add_edge("filter_existing_recommendations", "output_node")
     
     # 피드백 플로우
     workflow.add_edge("feedback_analyzer", "recommendation_generator")
@@ -318,11 +450,81 @@ async def delete_session(session_id: str):
     delete_session_from_db(session_id)
     return {"message": "세션이 삭제되었습니다.", "session_id": session_id}
 
+@app.post("/like", response_model=LikeResponse)
+async def toggle_like(request: LikeRequest):
+    """좋아요 토글"""
+    try:
+        if request.action == "like":
+            # 상품 정보를 가져와서 좋아요 추가
+            with engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT product_id, product_name, category, image_url, price, brand_kr
+                    FROM products WHERE product_id = :product_id
+                """), {'product_id': request.product_id})
+                
+                product = result.fetchone()
+                if product:
+                    product_data = {
+                        'product_id': product.product_id,
+                        'product_name': product.product_name,
+                        'category': product.category,
+                        'image_url': product.image_url,
+                        'price': product.price,
+                        'brand_kr': product.brand_kr
+                    }
+                    add_like(request.session_id, request.product_id, product_data)
+                    message = f"상품 '{product.product_name}'을 좋아요에 추가했습니다."
+                else:
+                    raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+        elif request.action == "unlike":
+            remove_like(request.session_id, request.product_id)
+            message = "좋아요를 취소했습니다."
+        else:
+            raise HTTPException(status_code=400, detail="잘못된 액션입니다.")
+        
+        # 좋아요한 상품 목록 반환
+        liked_products = get_liked_products(request.session_id)
+        
+        return LikeResponse(
+            message=message,
+            liked_products=liked_products
+        )
+        
+    except Exception as e:
+        print(f"좋아요 토글 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"좋아요 처리에 실패했습니다: {str(e)}")
+
+@app.get("/likes/{session_id}", response_model=LikeResponse)
+async def get_likes(session_id: str):
+    """좋아요한 상품 목록 조회"""
+    try:
+        liked_products = get_liked_products(session_id)
+        return LikeResponse(
+            message=f"좋아요한 상품 {len(liked_products)}개를 찾았습니다.",
+            liked_products=liked_products
+        )
+    except Exception as e:
+        print(f"좋아요 목록 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail="좋아요 목록 조회에 실패했습니다.")
+
+@app.get("/is-liked/{session_id}/{product_id}")
+async def check_liked(session_id: str, product_id: int):
+    """상품이 좋아요되었는지 확인"""
+    try:
+        is_liked_status = is_liked(session_id, product_id)
+        return {"is_liked": is_liked_status}
+    except Exception as e:
+        print(f"좋아요 확인 오류: {e}")
+        raise HTTPException(status_code=500, detail="좋아요 확인에 실패했습니다.")
+
 # ==================== 서버 시작 ====================
 
 if __name__ == "__main__":
     # 세션 테이블 생성
     create_sessions_table()
+    create_likes_table() # 좋아요 테이블 생성
     
     print("🚀 AI 패션 추천 시스템 서버 시작...")
     uvicorn.run(app, host=HOST, port=PORT) 

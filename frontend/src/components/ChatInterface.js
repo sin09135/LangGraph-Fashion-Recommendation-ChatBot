@@ -11,33 +11,34 @@ const ChatContainer = styled.div`
 const MessagesContainer = styled.div`
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 16px;
   
   /* 스크롤바 스타일링 */
   &::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
   }
   
   &::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
   }
   
   &::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
+    background: rgba(102, 126, 234, 0.3);
+    border-radius: 4px;
+    transition: background 0.3s ease;
   }
   
   &::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
+    background: rgba(102, 126, 234, 0.5);
   }
   
   @media (max-width: 768px) {
-    padding: 15px;
-    gap: 12px;
+    padding: 20px;
+    gap: 14px;
   }
 `;
 
@@ -54,115 +55,131 @@ const Message = styled.div`
 `;
 
 const MessageAvatar = styled.div`
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: ${props => props.isUser ? '#667eea' : '#f0f0f0'};
-  color: ${props => props.isUser ? 'white' : '#666'};
+  background: ${props => props.isUser ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)'};
+  color: ${props => props.isUser ? 'white' : '#64748b'};
+  box-shadow: ${props => props.isUser ? '0 4px 12px rgba(102, 126, 234, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)'};
+  border: 2px solid ${props => props.isUser ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.8)'};
 `;
 
 const MessageContent = styled.div`
   flex: 1;
-  padding: 12px 16px;
-  border-radius: 18px;
-  background: ${props => props.isUser ? '#667eea' : '#f8f9fa'};
-  color: ${props => props.isUser ? 'white' : '#333'};
+  padding: 14px 18px;
+  border-radius: 20px;
+  background: ${props => props.isUser ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255, 255, 255, 0.9)'};
+  color: ${props => props.isUser ? 'white' : '#1e293b'};
   max-width: 80%;
   word-wrap: break-word;
-  line-height: 1.5;
+  line-height: 1.6;
+  box-shadow: ${props => props.isUser ? '0 4px 12px rgba(102, 126, 234, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.08)'};
+  border: 1px solid ${props => props.isUser ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.05)'};
+  backdrop-filter: blur(10px);
 `;
 
 const InputContainer = styled.div`
-  padding: 20px;
-  border-top: 1px solid #f0f0f0;
+  padding: 24px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
   
   @media (max-width: 768px) {
-    padding: 15px;
-    gap: 8px;
+    padding: 20px;
+    gap: 10px;
   }
 `;
 
 const Input = styled.input`
   flex: 1;
-  padding: 12px 16px;
-  border: 2px solid #e0e0e0;
-  border-radius: 25px;
+  padding: 14px 20px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-radius: 28px;
   font-size: 14px;
   outline: none;
-  transition: border-color 0.3s ease;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
   
   &:focus {
     border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    background: rgba(255, 255, 255, 1);
   }
   
   &::placeholder {
-    color: #999;
+    color: #94a3b8;
   }
   
   @media (max-width: 768px) {
-    padding: 10px 14px;
+    padding: 12px 18px;
     font-size: 16px; /* 모바일에서 자동 확대 방지 */
   }
 `;
 
 const SendButton = styled.button`
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 50%;
-  background: #667eea;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
   
   &:hover {
-    background: #5a6fd8;
-    transform: scale(1.05);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
   }
   
   &:disabled {
-    background: #ccc;
+    background: #cbd5e1;
     cursor: not-allowed;
     transform: none;
+    box-shadow: none;
   }
   
   @media (max-width: 768px) {
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
   }
 `;
 
 const ImageUploadButton = styled.button`
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 50%;
-  background: #f0f0f0;
-  color: #666;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  color: #64748b;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   
   &:hover {
-    background: #e0e0e0;
-    transform: scale(1.05);
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
   
   @media (max-width: 768px) {
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
   }
 `;
 
@@ -409,9 +426,31 @@ function ChatInterface({ onProductsReceived, sessionId, setSessionId, setIsLoadi
               <Bot size={16} />
             </MessageAvatar>
             <MessageContent isUser={false}>
-              안녕하세요! AI 패션 어시스턴트입니다. 
-              어떤 스타일의 옷을 찾고 계신가요? 
-              예시: "버뮤다 팬츠 4만원 미만으로 추천해줘"
+              안녕하세요! 👋
+              <br /><br />
+              저는 AI 패션 추천 챗봇입니다. 당신만의 완벽한 스타일을 찾아드릴게요!
+              <br /><br />
+              🎯 <strong>주요 기능</strong>
+              <br />
+              • <strong>상품 추천</strong>: "버뮤다 팬츠 4만원 미만으로 추천해줘"
+              <br />
+              • <strong>코디 추천</strong>: "1번 상품과 코디하기 좋은 상품 추천해줘"
+              <br />
+              • <strong>유사 상품</strong>: "이 상품과 비슷한 스타일 추천해줘"
+              <br />
+              • <strong>리뷰 분석</strong>: "1번 상품 리뷰는 어때?"
+              <br />
+              • <strong>이미지 검색</strong>: 사진을 업로드하면 유사한 상품을 찾아드려요
+              <br /><br />
+              💡 <strong>사용 팁</strong>
+              <br />
+              - 구체적인 조건을 말씀해주시면 더 정확한 추천이 가능해요
+              <br />
+              - 가격, 브랜드, 스타일 등을 자유롭게 조합해서 요청해보세요
+              <br />
+              - 좋아하는 상품은 하트 버튼을 눌러서 저장할 수 있어요
+              <br /><br />
+              어떤 패션을 찾고 계신가요? 😊
             </MessageContent>
           </Message>
         )}

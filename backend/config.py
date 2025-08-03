@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # OpenAI 설정
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
 
 # 데이터베이스 설정
