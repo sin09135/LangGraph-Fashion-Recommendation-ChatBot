@@ -14,4 +14,7 @@ torch>=2.0.0
 torchvision>=0.15.0
 Pillow>=10.0.0
 requests>=2.31.0
-numpy>=1.24.0 
+numpy>=1.24.0
+# MCP 관련 의존성
+mcp>=1.0.0
+websockets>=11.0.0 

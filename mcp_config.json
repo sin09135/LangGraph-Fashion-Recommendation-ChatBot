@@ -1,0 +1,181 @@
+{
+  "mcpServers": {
+    "fashion-recommendation": {
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "DATABASE_URL": "${DATABASE_URL}",
+        "CHROMA_DB_PATH": "./chroma_db"
+      }
+    }
+  },
+  "tools": {
+    "fashion_recommend": {
+      "description": "패션 상품 추천 - 카테고리, 가격, 브랜드 등 조건으로 상품 추천",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "상품 카테고리 (상의, 하의, 신발, 액세서리 등)"
+          },
+          "price_range": {
+            "type": "string",
+            "description": "가격 범위 (예: 1만원-5만원)"
+          },
+          "brand": {
+            "type": "string",
+            "description": "브랜드명"
+          },
+          "style": {
+            "type": "string",
+            "description": "스타일 (캐주얼, 정장, 스포츠 등)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "추천 상품 개수 (기본값: 10)"
+          }
+        }
+      }
+    },
+    "fashion_coordination": {
+      "description": "코디네이션 추천 - 특정 상품과 어울리는 상품 추천",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "description": "기준 상품 ID"
+          },
+          "categories": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "추천할 카테고리들"
+          },
+          "budget": {
+            "type": "string",
+            "description": "예산 범위"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "추천 상품 개수"
+          }
+        },
+        "required": ["product_id"]
+      }
+    },
+    "fashion_similar_search": {
+      "description": "유사 상품 검색 - 이미지나 상품과 유사한 스타일 검색",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "image_url": {
+            "type": "string",
+            "description": "참조 이미지 URL"
+          },
+          "product_id": {
+            "type": "integer",
+            "description": "참조 상품 ID"
+          },
+          "similarity_threshold": {
+            "type": "number",
+            "description": "유사도 임계값 (0-1)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "검색 결과 개수"
+          }
+        }
+      }
+    },
+    "fashion_review_analysis": {
+      "description": "상품 리뷰 분석 및 요약",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "description": "상품 ID"
+          },
+          "keyword": {
+            "type": "string",
+            "description": "검색 키워드"
+          },
+          "rating_filter": {
+            "type": "number",
+            "description": "평점 필터 (1-5)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "분석할 리뷰 개수"
+          }
+        }
+      }
+    },
+    "fashion_image_search": {
+      "description": "이미지 기반 상품 검색",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "image_data": {
+            "type": "string",
+            "description": "Base64 인코딩된 이미지 데이터"
+          },
+          "category_filter": {
+            "type": "string",
+            "description": "카테고리 필터"
+          },
+          "similarity_threshold": {
+            "type": "number",
+            "description": "유사도 임계값"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "검색 결과 개수"
+          }
+        },
+        "required": ["image_data"]
+      }
+    },
+    "fashion_user_preferences": {
+      "description": "사용자 선호도 관리",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["get", "set", "update"],
+            "description": "동작 타입"
+          },
+          "preferences": {
+            "type": "object",
+            "description": "선호도 데이터"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "세션 ID"
+          }
+        },
+        "required": ["action"]
+      }
+    }
+  },
+  "resources": {
+    "fashion://products": {
+      "name": "패션 상품 데이터베이스",
+      "description": "패션 상품 정보 및 리뷰 데이터베이스",
+      "mimeType": "application/json"
+    },
+    "fashion://recommendations": {
+      "name": "추천 시스템",
+      "description": "AI 기반 패션 상품 추천 시스템",
+      "mimeType": "application/json"
+    },
+    "fashion://images": {
+      "name": "이미지 데이터베이스",
+      "description": "상품 이미지 및 CLIP 임베딩 데이터",
+      "mimeType": "application/json"
+    }
+  }
+} 

@@ -19,6 +19,14 @@ from backend.core.database import engine
 from config import HOST, PORT, CORS_ORIGINS
 from nodes import intent_router, conversation_agent, output_node, text_filter_parser, recommendation_generator, feedback_analyzer, image_processor, image_similarity_search, similar_product_finder, coordination_finder, review_search_node, review_based_recommendation, review_analyzer, filter_existing_recommendations
 
+# MCP API 통합
+try:
+    from mcp_api import mcp_router, register_mcp_events
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    print("⚠️ MCP API를 불러올 수 없습니다. MCP 기능이 비활성화됩니다.")
+
 # ==================== 세션 테이블 생성 ====================
 
 def create_sessions_table():
@@ -225,7 +233,11 @@ def is_liked(session_id: str, product_id: int) -> bool:
 
 # ==================== FastAPI 앱 생성 ====================
 
-app = FastAPI(title="AI 패션 추천 시스템", version="1.0.0")
+app = FastAPI(
+    title="AI 패션 추천 시스템 (MCP 통합)",
+    description="AI 기반 패션 상품 추천 챗봇 API (MCP 통합)",
+    version="1.0.0"
+)
 
 # CORS 설정
 app.add_middleware(
@@ -235,6 +247,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# MCP API 라우터 추가 (가능한 경우)
+if MCP_AVAILABLE:
+    app.include_router(mcp_router)
+    register_mcp_events(app)
+    print("✅ MCP API가 활성화되었습니다.")
+else:
+    print("❌ MCP API가 비활성화되었습니다.")
 
 # ==================== 요청/응답 모델 ====================
 
