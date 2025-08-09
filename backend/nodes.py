@@ -1,5 +1,8 @@
 from typing import Dict, Any, Optional
 from langchain_core.messages import AIMessage
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__)))
 from llm_service import llm_service
 import json
 from sqlalchemy import create_engine, text
@@ -1354,15 +1357,7 @@ def similar_product_finder(state: AgentState) -> AgentState:
         state['recommendations'] = similar_products
         state['previous_recommendations'] = similar_products  # 다음 요청을 위해 저장
         
-        response_text = f"{product_number}번 상품 '{target_product['product_name']}'과 유사한 상품 {len(similar_products)}개를 찾았습니다:\n\n"
-        
-        for i, product in enumerate(similar_products, 1):
-            response_text += f"{i}. {product['product_name']}\n"
-            if product.get('price'):
-                response_text += f"   가격: {product['price']:,}원\n"
-            if product.get('brand_kr'):
-                response_text += f"   브랜드: {product['brand_kr']}\n"
-            response_text += "\n"
+        response_text = f"{product_number}번 상품 '{target_product['product_name']}'과 유사한 상품 {len(similar_products)}개를 찾았습니다. 오른쪽에서 상품 정보를 확인해보세요!"
         
         ai_message = AIMessage(content=response_text)
         state['messages'].append(ai_message)
@@ -1436,45 +1431,67 @@ def output_node(state: AgentState) -> AgentState:
     
     response_text = ""
     
-    # 리뷰 요약 결과가 있으면 먼저 표시
-    review_summary = state.get('review_summary')
-    if review_summary and intent == "review_search":
-        response_text += f"{review_summary}\n\n"
+    # 리뷰 검색인 경우 특별 처리
+    if intent == "review_search":
+        review_summary = state.get('review_summary')
+        if review_summary:
+            response_text = review_summary
+        else:
+            response_text = "죄송합니다. 관련된 리뷰를 찾지 못했습니다."
+        
+        ai_message = AIMessage(content=response_text)
+        state['messages'].append(ai_message)
+        print(f"최종 응답 생성: {response_text[:50]}...")
+        return state
     
     if recommendations:
         # 추천 결과를 previous_recommendations에 저장 (다음 요청을 위해)
         state['previous_recommendations'] = recommendations
         print(f"💾 output_node에서 previous_recommendations 저장: {len(recommendations)}개")
         
+        # 자연스러운 추천 메시지 생성
         if intent == "image_search":
-            response_text += f"이미지와 유사한 상품 {len(recommendations)}개를 찾았습니다:\n\n"
+            response_text = f"이미지와 유사한 상품 {len(recommendations)}개를 찾았어요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
         elif intent == "review_search":
-            response_text += f"리뷰 기반 추천 상품 {len(recommendations)}개를 찾았습니다:\n\n"
+            response_text = f"리뷰 기반으로 추천한 상품 {len(recommendations)}개를 찾았어요! 오른쪽에서 상품 정보를 확인해보세요 📝"
         elif intent == "filter_existing":
-            response_text += f"조건에 맞는 상품 {len(recommendations)}개를 찾았습니다:\n\n"
+            # 피드백일 때는 간단한 응답만
+            response_text = f"조건에 맞는 상품 {len(recommendations)}개를 찾았어요! 🎯"
         else:
-            response_text += f"추천 상품 {len(recommendations)}개를 찾았습니다:\n\n"
+            # 일반 추천의 경우 카테고리나 스타일에 따른 자연스러운 설명 추가
+            slots = state.get('slots', {})
+            category = slots.get('category', '')
+            style = slots.get('style', '')
+            additional_keywords = slots.get('additional_keywords', [])
+            
+            if category == "바지":
+                if "버뮤다" in additional_keywords:
+                    response_text = f"버뮤다 팬츠 {len(recommendations)}개를 찾았어요! 🩳\n\n버뮤다 팬츠는 캐주얼하면서도 세련된 느낌을 주는 아이템이에요. 상의와 잘 어울려서 데일리 코디에 완벽하죠! 오른쪽에서 상품 정보를 확인해보세요 ✨"
+                elif "와이드" in additional_keywords:
+                    response_text = f"와이드 팬츠 {len(recommendations)}개를 찾았어요! 👖\n\n와이드 팬츠는 편안하면서도 트렌디한 느낌을 주는 아이템이에요. 루즈한 실루엣으로 스타일리시한 코디가 가능해요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
+                else:
+                    response_text = f"팬츠 {len(recommendations)}개를 찾았어요! 👖\n\n다양한 스타일의 팬츠들이 준비되어 있어요. 데일리룩부터 포인트 있는 코디까지 활용하기 좋은 아이템들이에요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
+            elif category == "상의":
+                if "니트" in additional_keywords:
+                    response_text = f"니트 상의 {len(recommendations)}개를 찾았어요! 🧶\n\n니트는 따뜻하면서도 세련된 느낌을 주는 아이템이에요. 겨울철 필수 아이템으로 다양한 코디에 활용하기 좋아요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
+                elif "셔츠" in additional_keywords:
+                    response_text = f"셔츠 {len(recommendations)}개를 찾았어요! 👔\n\n셔츠는 깔끔하고 정돈된 느낌을 주는 아이템이에요. 오피스룩부터 캐주얼룩까지 다양한 스타일에 활용할 수 있어요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
+                else:
+                    response_text = f"상의 {len(recommendations)}개를 찾았어요! 👕\n\n다양한 스타일의 상의들이 준비되어 있어요. 기본템부터 포인트 있는 아이템까지 원하는 스타일을 찾아보세요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
+            elif category == "신발":
+                response_text = f"신발 {len(recommendations)}개를 찾았어요! 👟\n\n신발은 전체적인 코디의 완성도를 결정하는 중요한 아이템이에요. 편안하면서도 스타일리시한 신발들을 확인해보세요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
+            elif category == "아우터":
+                response_text = f"아우터 {len(recommendations)}개를 찾았어요! 🧥\n\n아우터는 계절감과 스타일을 동시에 표현할 수 있는 아이템이에요. 다양한 실루엣과 소재의 아우터들을 확인해보세요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
+            else:
+                response_text = f"추천 상품 {len(recommendations)}개를 찾았어요! 🎉\n\n다양한 스타일의 상품들이 준비되어 있어요. 마음에 드는 상품을 찾아보세요! 오른쪽에서 상품 정보를 확인해보세요 ✨"
         
-        # 사용자 기억에 따라 상품 표시 (설정 가능)
-        display_count = min(DEFAULT_DISPLAY_COUNT, len(recommendations))
-        for i, product in enumerate(recommendations[:display_count], 1):
-            response_text += f"{i}. {product['product_name']} ({product['brand_kr']})\n"
-            response_text += f"   가격: {product['price']:,}원\n"
-            response_text += f"   카테고리: {product['category']}\n"
-            if product.get('similarity_score'):
-                response_text += f"   유사도: {product['similarity_score']:.2f}\n"
-            if product.get('recommendation_type') == 'review_based':
-                response_text += f"   추천 이유: 높은 평점의 리뷰 기반\n"
-            response_text += "\n"
-        
+        # 피드백에 따른 추가 메시지
         if feedback == "positive":
-            response_text += "좋아하신다니 기뻐요! 더 많은 추천이 필요하시면 언제든 말씀해주세요. 😊"
+            response_text += "\n\n좋아하신다니 기뻐요! 더 많은 추천이 필요하시면 언제든 말씀해주세요 😊"
         elif feedback == "negative":
-            response_text += "아쉽네요. 다른 조건으로 다시 추천해드릴게요!"
-        elif intent == "review_search":
-            response_text += "이런 상품들은 어떠세요? 다른 리뷰나 상품에 대해 궁금한 점이 있으시면 언제든 말씀해주세요!"
+            response_text += "\n\n아쉽네요. 다른 조건으로 다시 추천해드릴게요! 더 구체적인 요청이 있으시면 말씀해주세요 💪"
         else:
-            response_text += "이런 상품들은 어떠세요? 더 구체적인 요청이 있으시면 말씀해주세요!"
+            response_text += "\n\n마음에 드는 상품이 있으시면 좋아요를 눌러서 저장해보세요! 💖"
     else:
         if intent == "review_search":
             response_text = "죄송합니다. 관련된 리뷰를 찾지 못했습니다. 다른 키워드로 다시 시도해보세요."
@@ -1519,6 +1536,8 @@ def review_search_node(state: AgentState) -> AgentState:
                 else:
                     state['review_summary'] = f"{product_number}번 상품 '{target_product['product_name']}'의 리뷰를 찾을 수 없습니다."
                 
+                # 리뷰 검색일 때는 추천 결과 초기화
+                state['recommendations'] = []
                 return state
         
         # 2. 좋아요 누른 상품들의 리뷰 검색
@@ -1541,6 +1560,8 @@ def review_search_node(state: AgentState) -> AgentState:
                 else:
                     state['review_summary'] = "좋아요 누른 상품들의 리뷰를 찾을 수 없습니다."
                 
+                # 리뷰 검색일 때는 추천 결과 초기화
+                state['recommendations'] = []
                 return state
         
         # 3. 일반적인 리뷰 검색 (품질, 만족도 등)
@@ -1555,11 +1576,15 @@ def review_search_node(state: AgentState) -> AgentState:
             print("📊 일반 리뷰 요약 완료")
         else:
             state['review_summary'] = f"'{user_input}'와 관련된 리뷰를 찾을 수 없습니다."
+        
+        # 리뷰 검색일 때는 추천 결과 초기화
+        state['recommendations'] = []
             
     except Exception as e:
         print(f"⚠️ 리뷰 검색 오류: {e}")
         state['review_results'] = []
         state['review_summary'] = "리뷰 검색 중 오류가 발생했습니다."
+        state['recommendations'] = []
     
     return state
 
@@ -1655,7 +1680,7 @@ def generate_review_summary(reviews: list, product_name: str) -> str:
     
     {chr(10).join(review_texts)}
     
-    이 리뷰들을 간단한 텍스트로만 요약해주세요. 마크다운 형식이나 불필요한 구조는 제외하고, 핵심 내용만 간결하게 작성해주세요. 사용자에게 설명하는 식으로 존댓말을 사용해주세요.
+    이 리뷰들을 2-3문장으로만 간단히 요약해주세요. 핵심적인 장단점만 언급하고, 불필요한 세부사항은 제외해주세요. 존댓말로 작성해주세요.
     """
     
     try:
@@ -1683,7 +1708,7 @@ def generate_liked_products_review_summary(reviews: list, liked_products: list) 
     
     {chr(10).join(review_texts)}
     
-    이 리뷰들을 간단한 텍스트로만 요약해주세요. 마크다운 형식이나 불필요한 구조는 제외하고, 핵심 내용만 간결하게 작성해주세요. 사용자에게 설명하는 식으로 존댓말을 사용해주세요.
+    이 리뷰들을 2-3문장으로만 간단히 요약해주세요. 핵심적인 장단점만 언급하고, 불필요한 세부사항은 제외해주세요. 존댓말로 작성해주세요.
     """
     
     try:
@@ -1710,7 +1735,7 @@ def generate_general_review_summary(reviews: list, keyword: str) -> str:
     
     {chr(10).join(review_texts)}
     
-    이 리뷰들을 간단한 텍스트로만 요약해주세요. 마크다운 형식이나 불필요한 구조는 제외하고, 핵심 내용만 간결하게 작성해주세요. 사용자에게 설명하는 식으로 존댓말을 사용해주세요.
+    이 리뷰들을 2-3문장으로만 간단히 요약해주세요. 핵심적인 장단점만 언급하고, 불필요한 세부사항은 제외해주세요. 존댓말로 작성해주세요.
     """
     
     try:
@@ -2155,17 +2180,7 @@ def coordination_finder(state: AgentState) -> AgentState:
         state['recommendations'] = coordination_products
         state['previous_recommendations'] = coordination_products  # 다음 요청을 위해 저장
         
-        response_text = f"{product_number}번 상품 '{target_product['product_name']}'과 코디하기 좋은 상품 {len(coordination_products)}개를 찾았습니다:\n\n"
-        
-        for i, product in enumerate(coordination_products, 1):
-            response_text += f"{i}. {product['product_name']}\n"
-            if product.get('price'):
-                response_text += f"   가격: {product['price']:,}원\n"
-            if product.get('brand_kr'):
-                response_text += f"   브랜드: {product['brand_kr']}\n"
-            if product.get('category'):
-                response_text += f"   카테고리: {product['category']}\n"
-            response_text += "\n"
+        response_text = f"{product_number}번 상품 '{target_product['product_name']}'과 코디하기 좋은 상품 {len(coordination_products)}개를 찾았습니다. 오른쪽에서 상품 정보를 확인해보세요!"
         
         ai_message = AIMessage(content=response_text)
         state['messages'].append(ai_message)

@@ -53,4 +53,15 @@ FEEDBACK_KEYWORDS = {
 }
 
 # 유사 상품 키워드
-SIMILAR_PRODUCT_KEYWORDS = os.getenv("SIMILAR_PRODUCT_KEYWORDS", "유사한,비슷한,같은 스타일,같은 느낌,이런 스타일,이런 느낌").split(",") 
+SIMILAR_PRODUCT_KEYWORDS = os.getenv("SIMILAR_PRODUCT_KEYWORDS", "유사한,비슷한,같은 스타일,같은 느낌,이런 스타일,이런 느낌").split(",")
+
+def get_settings():
+    """설정 객체 반환"""
+    return {
+        "openai_model": OPENAI_MODEL,
+        "openai_temperature": OPENAI_TEMPERATURE,
+        "db_url": DB_URL,
+        "host": HOST,
+        "port": PORT,
+        "cors_origins": CORS_ORIGINS
+    } 

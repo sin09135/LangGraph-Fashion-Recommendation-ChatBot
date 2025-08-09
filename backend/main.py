@@ -340,8 +340,7 @@ def create_simple_graph():
     
     # 리뷰 검색 플로우
     workflow.add_edge("review_search_node", "review_analyzer")
-    workflow.add_edge("review_analyzer", "review_based_recommendation")
-    workflow.add_edge("review_based_recommendation", "output_node")
+    workflow.add_edge("review_analyzer", "output_node")
     
     # 기존 추천 결과 필터링 플로우
     workflow.add_edge("filter_existing_recommendations", "output_node")
@@ -539,7 +538,189 @@ async def check_liked(session_id: str, product_id: int):
         print(f"좋아요 확인 오류: {e}")
         raise HTTPException(status_code=500, detail="좋아요 확인에 실패했습니다.")
 
+@app.get("/products")
+async def get_products():
+    """모든 상품 조회"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT product_id, product_name, brand_kr, category, price, image_url, product_url FROM products ORDER BY product_id"))
+            products = []
+            for row in result:
+                products.append({
+                    "id": row.product_id,
+                    "name": row.product_name,
+                    "brand": row.brand_kr,
+                    "category": row.category,
+                    "price": row.price,
+                    "image_url": row.image_url,
+                    "product_url": row.product_url
+                })
+            return products
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"상품 조회 오류: {str(e)}")
+
+@app.get("/products/{product_id}")
+async def get_product(product_id: int):
+    """특정 상품 조회"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT product_id, product_name, brand_kr, category, price, image_url, product_url FROM products WHERE product_id = :product_id"), {"product_id": product_id})
+            product = result.fetchone()
+            if not product:
+                raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다")
+            
+            return {
+                "id": product.product_id,
+                "name": product.product_name,
+                "brand": product.brand_kr,
+                "category": product.category,
+                "price": product.price,
+                "image_url": product.image_url,
+                "product_url": product.product_url
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"상품 조회 오류: {str(e)}")
+
+@app.get("/products/{product_id}/reviews")
+async def get_product_reviews(product_id: int):
+    """상품의 리뷰 조회"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT id, product_id, rating, content, user_name, review_date FROM product_reviews WHERE product_id = :product_id ORDER BY rating DESC"), {"product_id": product_id})
+            reviews = []
+            for row in result:
+                reviews.append({
+                    "id": row.id,
+                    "product_id": row.product_id,
+                    "rating": row.rating,
+                    "review_text": row.content,
+                    "reviewer_name": row.user_name,
+                    "created_at": row.review_date.isoformat() if row.review_date else None
+                })
+            return reviews
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"리뷰 조회 오류: {str(e)}")
+
+@app.get("/products/search")
+async def search_products(q: str):
+    """상품 검색"""
+    try:
+        with engine.connect() as conn:
+            search_term = f"%{q}%"
+            result = conn.execute(text("""
+                SELECT product_id, product_name, brand_kr, category, price, image_url, product_url FROM products 
+                WHERE product_name ILIKE :search_term 
+                OR brand_kr ILIKE :search_term 
+                OR category ILIKE :search_term
+                ORDER BY product_id
+            """), {"search_term": search_term})
+            
+            products = []
+            for row in result:
+                products.append({
+                    "id": row.product_id,
+                    "name": row.product_name,
+                    "brand": row.brand_kr,
+                    "category": row.category,
+                    "price": row.price,
+                    "image_url": row.image_url,
+                    "product_url": row.product_url
+                })
+            return products
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"상품 검색 오류: {str(e)}")
+
 # ==================== 서버 시작 ====================
+
+@app.get("/review-analysis/{keyword}")
+async def get_review_analysis(keyword: str):
+    """키워드로 상품 검색 후 각 상품별 리뷰 요약"""
+    try:
+        with engine.connect() as conn:
+            # 1. 키워드로 상품 검색
+            products_result = conn.execute(text("""
+                SELECT product_id, product_name, brand_kr, price, category, image_url, product_url
+                FROM products 
+                WHERE product_name ILIKE :keyword 
+                   OR brand_kr ILIKE :keyword 
+                   OR category ILIKE :keyword
+                LIMIT 10
+            """), {'keyword': f'%{keyword}%'})
+            
+            products = []
+            for row in products_result:
+                products.append({
+                    'product_id': row.product_id,
+                    'product_name': row.product_name,
+                    'brand_kr': row.brand_kr,
+                    'price': row.price,
+                    'category': row.category,
+                    'image_url': row.image_url,
+                    'product_url': row.product_url
+                })
+            
+            # 2. 각 상품별 리뷰 요약
+            product_summaries = []
+            for product in products:
+                reviews_result = conn.execute(text("""
+                    SELECT rating, content, user_name, review_date
+                    FROM product_reviews 
+                    WHERE product_id = :product_id 
+                    AND content IS NOT NULL AND content != ''
+                    ORDER BY rating DESC
+                    LIMIT 5
+                """), {'product_id': product['product_id']})
+                
+                product_reviews = []
+                for review in reviews_result:
+                    product_reviews.append({
+                        'rating': review.rating,
+                        'content': review.content,
+                        'user_name': review.user_name,
+                        'review_date': review.review_date
+                    })
+                
+                # 각 상품별 리뷰 요약 생성
+                if product_reviews:
+                    review_texts = []
+                    for review in product_reviews:
+                        review_texts.append(f"평점 {review['rating']}점: {review['content']}")
+                    
+                    from llm_service import llm_service
+                    summary_prompt = f"""
+                    다음은 '{product['product_name']}' 상품의 리뷰들입니다:
+                    
+                    {chr(10).join(review_texts)}
+                    
+                    이 리뷰들을 1-2문장으로만 간단히 요약해주세요. 핵심적인 장단점만 언급하고, 존댓말로 작성해주세요.
+                    """
+                    
+                    try:
+                        summary = llm_service.invoke(summary_prompt)
+                    except Exception as e:
+                        summary = f"{product['product_name']}의 리뷰를 분석했습니다."
+                    
+                    product_summaries.append({
+                        'product_name': product['product_name'],
+                        'brand_kr': product['brand_kr'],
+                        'price': product['price'],
+                        'image_url': product['image_url'],
+                        'product_url': product['product_url'],
+                        'summary': summary,
+                        'review_count': len(product_reviews),
+                        'average_rating': sum(r['rating'] for r in product_reviews) / len(product_reviews)
+                    })
+            
+            return {
+                "keyword": keyword,
+                "product_summaries": product_summaries,
+                "total_products": len(product_summaries)
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     # 세션 테이블 생성

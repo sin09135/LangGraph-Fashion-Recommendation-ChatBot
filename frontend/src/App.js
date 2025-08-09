@@ -1,325 +1,156 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import Sidebar from './components/Sidebar';
+import {
+  MainPage,
+  CoordinationRecommendation,
+  SimilarProductSearch,
+  ReviewAnalysis,
+  ImageSearch,
+  TrendAnalysis,
+  LikedProducts,
+  ProductBrowser,
+  Settings
+} from './components/FeatureComponents';
 import ChatInterface from './components/ChatInterface';
-import ProductGrid from './components/ProductGrid';
-import LikedProductsView from './components/LikedProductsView';
-import Header from './components/Header';
-import { MessageCircle, ShoppingBag, RefreshCw } from 'lucide-react';
 
 const AppContainer = styled.div`
-  min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  position: relative;
-  
-  &::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: 
-      radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
-      radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.2) 0%, transparent 50%);
-    pointer-events: none;
-    z-index: 0;
-  }
+  display: flex;
+  height: 100vh;
+  background: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
 `;
 
 const MainContent = styled.div`
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 32px 24px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  min-height: calc(100vh - 120px);
-  position: relative;
-  z-index: 1;
-  
-  @media (max-width: 1024px) {
-    grid-template-columns: 1fr;
-    gap: 24px;
-    padding: 24px 20px;
-  }
-  
-  @media (max-width: 768px) {
-    padding: 20px 16px;
-    gap: 20px;
-  }
+  flex: 1;
+  margin-left: 280px;
+  background: #f8fafc;
+  overflow: hidden;
 `;
 
 const ChatSection = styled.div`
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 24px;
-  box-shadow: 
-    0 20px 40px rgba(0, 0, 0, 0.1),
-    0 8px 16px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
+  background: #ffffff;
+  border-radius: 12px;
+  margin: 24px;
+  padding: 32px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border: 1px solid #f1f5f9;
+  height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(20px);
-  transition: all 0.3s ease;
-  height: calc(100vh - 200px);
-  min-height: 500px;
-  max-height: 700px;
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 
-      0 25px 50px rgba(0, 0, 0, 0.12),
-      0 12px 24px rgba(0, 0, 0, 0.06);
-  }
-  
-  @media (max-width: 1024px) {
-    height: 500px;
-    min-height: 400px;
-    max-height: 600px;
-  }
-`;
-
-const ProductSection = styled.div`
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 24px;
-  box-shadow: 
-    0 20px 40px rgba(0, 0, 0, 0.1),
-    0 8px 16px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(20px);
-  transition: all 0.3s ease;
-  height: calc(100vh - 200px);
-  min-height: 500px;
-  max-height: 700px;
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 
-      0 25px 50px rgba(0, 0, 0, 0.12),
-      0 12px 24px rgba(0, 0, 0, 0.06);
-  }
-  
-  @media (max-width: 1024px) {
-    height: auto;
-    min-height: 400px;
-    max-height: none;
-  }
 `;
 
 const SectionHeader = styled.div`
-  padding: 24px 28px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  font-weight: 700;
-  color: #1a1a1a;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  font-size: 18px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #f1f5f9;
   
-  @media (max-width: 768px) {
-    padding: 20px 24px;
+  h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  
+  p {
+    margin: 4px 0 0 0;
+    color: #64748b;
     font-size: 16px;
   }
 `;
 
 const ResetButton = styled.button`
-  position: fixed;
-  bottom: 32px;
-  right: 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 12px 20px;
+  background: #6366f1;
   color: white;
   border: none;
-  border-radius: 16px;
-  padding: 16px 24px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
+  border-radius: 8px;
   font-size: 14px;
-  box-shadow: 
-    0 8px 24px rgba(102, 126, 234, 0.3),
-    0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-  z-index: 1000;
-  backdrop-filter: blur(10px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
   
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 
-      0 12px 32px rgba(102, 126, 234, 0.4),
-      0 6px 16px rgba(0, 0, 0, 0.15);
-  }
-  
-  &:active {
-    transform: translateY(0);
-  }
-  
-  @media (max-width: 768px) {
-    bottom: 24px;
-    right: 24px;
-    padding: 12px 20px;
-    font-size: 13px;
-    border-radius: 14px;
+    background: #5855eb;
+    transform: translateY(-1px);
   }
 `;
 
+const ProductSection = styled.div`
+  background: #ffffff;
+  border-radius: 12px;
+  margin: 24px;
+  padding: 32px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border: 1px solid #f1f5f9;
+  height: calc(100vh - 48px);
+  overflow-y: auto;
+`;
+
 function App() {
-  const [sessionId, setSessionId] = useState(null);
-  const [products, setProducts] = useState([]);
-  const [recommendedProducts, setRecommendedProducts] = useState([]); // 추천 상품 목록 별도 저장
-  const [isLoading, setIsLoading] = useState(false);
-  const [showLikedProducts, setShowLikedProducts] = useState(false);
+  const [activeFeature, setActiveFeature] = useState('main');
   const [likedProducts, setLikedProducts] = useState([]);
+  const [chatResetKey, setChatResetKey] = useState(0);
 
-  const resetSession = async () => {
-    if (sessionId) {
-      try {
-        await fetch(`http://localhost:8001/session/${sessionId}`, {
-          method: 'DELETE'
-        });
-      } catch (error) {
-        console.error('세션 초기화 오류:', error);
-      }
-    }
-    setSessionId(null);
-    setProducts([]);
+  const handleUnlike = (product) => {
+    setLikedProducts(prev => prev.filter(p => p.product_id !== product.product_id));
   };
 
-  // 좋아요 목록 변경 핸들러
-  const handleLikedProductsChange = (newLikedProducts) => {
-    setLikedProducts(newLikedProducts);
+  const handleChatReset = () => {
+    setChatResetKey(prev => prev + 1);
   };
 
-  // 좋아요 취소 핸들러
-  const handleUnlike = async (product) => {
-    try {
-      const response = await fetch('http://localhost:8001/like', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          session_id: sessionId,
-          product_id: product.product_id,
-          action: 'unlike'
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setLikedProducts(data.liked_products);
-        console.log('좋아요 취소:', product.product_name);
-      } else {
-        console.error('좋아요 취소 실패');
-      }
-    } catch (error) {
-      console.error('좋아요 취소 오류:', error);
-    }
-  };
-
-  // 좋아요 목록 토글
-  const toggleLikedProducts = () => {
-    if (showLikedProducts) {
-      setShowLikedProducts(false);
-      setProducts(recommendedProducts); // 저장된 추천 상품 목록으로 복원
-    } else {
-      setShowLikedProducts(true);
+  const renderActiveFeature = () => {
+    switch (activeFeature) {
+      case 'main':
+        return <MainPage />;
+      case 'chat':
+        return (
+          <ChatSection>
+            <SectionHeader>
+              <div>
+                <h2>패션 추천 챗봇</h2>
+                <p>자연어 대화를 통해 개인화된 패션 추천을 받아보세요</p>
+              </div>
+              <ResetButton onClick={handleChatReset}>대화 초기화</ResetButton>
+            </SectionHeader>
+            <ChatInterface 
+              key={chatResetKey}
+              likedProducts={likedProducts}
+              setLikedProducts={setLikedProducts}
+            />
+          </ChatSection>
+        );
+      case 'coordination':
+        return <CoordinationRecommendation />;
+      case 'similar':
+        return <SimilarProductSearch />;
+      case 'reviews':
+        return <ReviewAnalysis />;
+      case 'image':
+        return <ImageSearch />;
+      case 'trends':
+        return <TrendAnalysis />;
+      case 'liked':
+        return <LikedProducts likedProducts={likedProducts} onUnlike={handleUnlike} />;
+      case 'products':
+        return <ProductBrowser />;
+      case 'settings':
+        return <Settings />;
+      default:
+        return <MainPage />;
     }
   };
 
   return (
     <AppContainer>
-      <Header />
+      <Sidebar activeFeature={activeFeature} onFeatureChange={setActiveFeature} />
       <MainContent>
-        <ChatSection>
-          <SectionHeader>
-            <MessageCircle size={20} />
-            AI 패션 어시스턴트
-          </SectionHeader>
-          <ChatInterface 
-            onProductsReceived={(newProducts) => {
-              setProducts(newProducts);
-              setRecommendedProducts(newProducts); // 추천 상품 목록도 저장
-            }}
-            sessionId={sessionId}
-            setSessionId={setSessionId}
-            setIsLoading={setIsLoading}
-          />
-        </ChatSection>
-        
-        <ProductSection>
-          <SectionHeader>
-            <ShoppingBag size={20} />
-            {showLikedProducts ? '좋아요 목록' : '추천 상품'}
-            {!showLikedProducts && (
-              <button 
-                onClick={toggleLikedProducts}
-                style={{
-                  marginLeft: 'auto',
-                  background: '#1a1a1a',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseOver={(e) => e.target.style.background = '#2d2d2d'}
-                onMouseOut={(e) => e.target.style.background = '#1a1a1a'}
-              >
-                ❤️ 좋아요 목록
-              </button>
-            )}
-            {showLikedProducts && (
-              <button 
-                onClick={toggleLikedProducts}
-                style={{
-                  marginLeft: 'auto',
-                  background: '#666666',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseOver={(e) => e.target.style.background = '#888888'}
-                onMouseOut={(e) => e.target.style.background = '#666666'}
-              >
-                ← 추천 상품으로
-              </button>
-            )}
-          </SectionHeader>
-          {showLikedProducts ? (
-            <LikedProductsView 
-              likedProducts={likedProducts}
-              onUnlike={handleUnlike}
-              sessionId={sessionId}
-            />
-          ) : (
-            <ProductGrid 
-              products={products} 
-              isLoading={isLoading}
-              sessionId={sessionId}
-              onLikedProductsChange={handleLikedProductsChange}
-            />
-          )}
-        </ProductSection>
+        {renderActiveFeature()}
       </MainContent>
-      
-      <ResetButton onClick={resetSession}>
-        <RefreshCw size={16} />
-        대화 초기화
-      </ResetButton>
     </AppContainer>
   );
 }

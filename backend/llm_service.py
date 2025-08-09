@@ -1,5 +1,8 @@
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.messages import HumanMessage, AIMessage
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__)))
 from config import OPENAI_MODEL, OPENAI_TEMPERATURE
 
 class LLMService:
