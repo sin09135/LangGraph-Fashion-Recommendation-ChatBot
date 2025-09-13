@@ -2,7 +2,7 @@
 
 AI 기반 패션 상품 추천 챗봇입니다. 자연어 대화를 통해 개인화된 패션 추천을 제공하며, 이미지 업로드, 텍스트 기반 검색, 유사 상품 추천, 코디네이션 추천, 리뷰 분석 등의 기능을 제공합니다.
 
-**🆕 MCP(Model Context Protocol) 통합**: 이제 모든 추천 기능이 표준화된 MCP 도구로 제공됩니다.
+** MCP(Model Context Protocol) 통합**: 이제 모든 추천 기능이 표준화된 MCP 도구로 제공됩니다.
 
 ## 🎯 주요 기능
 
@@ -200,37 +200,6 @@ fashion_rec_system/
 사용자: "1번 상품 리뷰는 어때?"
 시스템: 해당 상품의 리뷰 요약 및 평점 분석 제공
 ```
-
-## 🛠️ 환경 설정
-
-### 1. Python 환경
-```bash
-# 가상환경 생성
-python -m venv venv
-
-# 가상환경 활성화
-source venv/bin/activate  # macOS/Linux
-# 또는
-venv\Scripts\activate     # Windows
-
-# 의존성 설치
-pip install -r requirements.txt
-```
-
-### 2. Node.js 환경
-```bash
-# Node.js 16+ 설치 필요
-cd frontend
-npm install
-```
-
-### 3. 환경 변수 설정
-```bash
-# .env 파일 생성
-OPENAI_API_KEY=your_openai_api_key
-DATABASE_URL=postgresql://username:password@localhost:5432/fashion_db
-```
-
 ## 📋 API 엔드포인트
 
 ### 기존 API
@@ -248,21 +217,6 @@ DATABASE_URL=postgresql://username:password@localhost:5432/fashion_db
 - `GET /api/mcp/health`: MCP 서버 상태 확인
 - `WebSocket /api/mcp/ws`: 실시간 MCP 통신
 
-## 🧪 테스트
-
-```bash
-# MCP 테스트
-./test_mcp.sh
-
-# 백엔드 테스트
-cd backend
-python -m pytest
-
-# 프론트엔드 테스트
-cd frontend
-npm test
-```
-
 ## 개발 워크플로우
 
 1. **MCP 도구 개발**: `mcp_server.py`에 새로운 도구 추가
@@ -271,55 +225,6 @@ npm test
 4. **LangGraph 노드 추가**: `backend/nodes.py`에 새로운 노드 구현
 5. **테스트**: 각 기능별 테스트 실행
 6. **배포**: Git을 통한 버전 관리
-
-## 🚀 MCP 확장
-
-### 새로운 MCP 도구 추가
-```python
-# mcp_server.py에 도구 정의 추가
-Tool(
-    name="fashion_new_tool",
-    description="새로운 패션 도구",
-    inputSchema={
-        "type": "object",
-        "properties": {
-            "param1": {"type": "string", "description": "매개변수 1"}
-        },
-        "required": ["param1"]
-    }
-)
-```
-
-### MCP 클라이언트 확장
-```python
-# mcp_client.py에 메서드 추가
-async def new_tool_method(self, **kwargs) -> str:
-    request = FashionRecommendationRequest(
-        tool_name="fashion_new_tool",
-        arguments=kwargs,
-        session_id="default"
-    )
-    return await self.call_tool(request)
-```
-
-## 라이선스
-
-<<<<<<< HEAD
-1. 이 저장소를 포크합니다
-2. 새로운 브랜치를 생성합니다 (`git checkout -b feature/amazing-feature`)
-3. 변경사항을 커밋합니다 (`git commit -m 'Add amazing feature'`)
-4. 브랜치에 푸시합니다 (`git push origin feature/amazing-feature`)
-5. Pull Request를 생성합니다
-
-## 📄 라이선스
-
-이 프로젝트는 MIT 라이선스 하에 배포됩니다.
-
-## 📞 지원
-
-문제가 있거나 질문이 있으시면 이슈를 생성해 주세요.
-
-## 🔗 관련 문서
 
 - [MCP 상세 문서](./MCP_README.md)
 - [LangGraph 구조 문서](./langgraph_structure.md)
