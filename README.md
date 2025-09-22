@@ -2,7 +2,8 @@
 
 ## 프로젝트 개요
 
-자연어 처리와 이미지 유사도 분석을 통해 개인화된 패션 상품을 추천하는 지능형 AI 플랫폼입니다. LangGraph와 MCP(Model Context Protocol)를 활용하여 대화형 AI 워크플로우를 구현했습니다.
+자연어 처리와 이미지 유사도 분석을 통해 개인화된 패션 상품을 추천하는 AI 챗봇입니다. 
+LangGraph와 MCP(Model Context Protocol)를 활용하여 대화형 AI 워크플로우를 구현했습니다.
 본 프로젝트의 상세한 구현 내용, 기술적 도전과 해결 과정, 성능 최적화 기법 등은 **portfolio_chabot.pdf**에서 확인할 수 있습니다.
 
 ## 주요 기능
